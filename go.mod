@@ -1,4 +1,4 @@
-module github.com/oopsunix/ghproxy
+module github.com/Geekertao/ghproxy
 
 go 1.22.5
 

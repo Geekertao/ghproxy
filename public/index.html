@@ -11,19 +11,19 @@
     <meta name="language" content="zh-CN">
     <!-- Open Graph Meta Tags -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://{{.Domain}}">
+    <meta property="og:url" content="">
     <meta property="og:title" content="GitHub 文件代理加速">
     <meta property="og:description" content="在线重定向Github链接，支持API , Git 以及 Releases , Archive , gist , raw.githubusercontent.com 文件代理加速下载服务.">
     <meta property="og:image" content="https://cdn.akams.cn/github/home24-5939032587c9.jpg">
     <!-- Twitter Meta Tags -->
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://{{.Domain}}" />
+    <meta property="twitter:url" content="" />
     <meta property="twitter:title" content="GitHub 文件代理加速" />
     <meta property="twitter:description" content="在线重定向Github链接，支持API , Git 以及 Releases , Archive , gist , raw.githubusercontent.com 文件代理加速下载服务." />
     <meta property="twitter:image" content="https://cdn.akams.cn/github/home24-5939032587c9.jpg" />
     <meta name="msvalidate.01" content="0ED5622ACD2DC6FF86BD2630060C6406" />
     <link rel="icon" href="https://cdn.akams.cn/github/favicon.png" />
-    <style>html,body{width:100%;margin:0}html{height:100%}body{min-height:100%;padding:20px;box-sizing:border-box}p{word-break:break-all}@media (max-width:500px){h1{margin-top:80px}}.flex{display:flex;flex-direction:column;justify-content:center;align-items:center}.block{display:block;position:relative}.url{font-size:18px;padding:10px 10px 10px 5px;position:relative;width:600px;border:0;border-bottom:1px solid #bfbfbf}input::placeholder{text-align: center;}input:focus{outline:0}.bar{content:'';height:2px;width:100%;bottom:0;position:absolute;background:#2378ff;transition:.2s ease transform;-moz-transition:.2s ease transform;-webkit-transition:.2s ease transform;transform:scaleX(0)}.url:focus ~ .bar{transform:scaleX(1)}.btn{line-height:38px;background-color:#2378ff;color:#fff;white-space:nowrap;text-align:center;font-size:14px;border:0;border-radius:2px;cursor:pointer;padding:5px;width:160px;margin:30px 0}.tips,.example,.command{color:#7b7b7b;position:relative;align-self:flex-start;margin-left:7.5em}.tips > p:first-child::before{position:absolute;left:-3em;content:'PS：';color:#7b7b7b}.example > p:first-child::before{position:absolute;left:-7.5em;content:'页面输入示例：';color:#7b7b7b}.command > p:first-child::before{position:absolute;left:-7.5em;content:'终端命令示例：';color:#7b7b7b}</style>
+    <style>html,body{width:100%;margin:0}html{height:100%}body{min-height:100%;padding:20px;box-sizing:border-box}p{word-break:break-all}.nav{position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 20px;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:1000;display:flex;justify-content:space-between;align-items:center}.nav a{color:#2378ff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 16px;border-radius:4px;transition:all 0.3s}.nav a:hover{background:#2378ff;color:#fff}.nav-title{font-size:16px;font-weight:bold;color:#333}@media (max-width:500px){h1{margin-top:80px}.nav{padding:8px 12px}.nav a{padding:6px 10px;font-size:12px}.nav-title{font-size:14px}}.flex{display:flex;flex-direction:column;justify-content:center;align-items:center}.block{display:block;position:relative}.url{font-size:18px;padding:10px 10px 10px 5px;position:relative;width:600px;border:0;border-bottom:1px solid #bfbfbf}@media (max-width:768px){.url{width:90%;max-width:400px;font-size:16px;padding:8px 8px 8px 4px}}@media (max-width:480px){.url{width:95%;max-width:300px;font-size:14px;padding:6px 6px 6px 3px}}input::placeholder{text-align: center;}input:focus{outline:0}.bar{content:'';height:2px;width:100%;bottom:0;position:absolute;background:#2378ff;transition:.2s ease transform;-moz-transition:.2s ease transform;-webkit-transition:.2s ease transform;transform:scaleX(0)}.url:focus ~ .bar{transform:scaleX(1)}.btn{line-height:38px;background-color:#2378ff;color:#fff;white-space:nowrap;text-align:center;font-size:14px;border:0;border-radius:2px;cursor:pointer;padding:5px;width:160px;margin:30px 0}@media (max-width:480px){.btn{width:120px;font-size:13px;padding:4px;margin:20px 0}}.tips,.example,.command{color:#7b7b7b;position:relative;align-self:flex-start;margin-left:7.5em}@media (max-width:768px){.tips,.example,.command{margin-left:1em;padding:0 10px}.tips > p:first-child::before,.example > p:first-child::before,.command > p:first-child::before{display:none}}.tips > p:first-child::before{position:absolute;left:-3em;content:'PS：';color:#7b7b7b}.example > p:first-child::before{position:absolute;left:-7.5em;content:'页面输入示例：';color:#7b7b7b}.command > p:first-child::before{position:absolute;left:-7.5em;content:'终端命令示例：';color:#7b7b7b}</style>
     <style>.friend-link{display:inline-block;padding:0 5px;color:#2378ff;text-align:center;text-decoration:none;font-size:14px;font-weight:900;cursor:pointer;}.friend-link:hover{background-color:#0061A8;color:#ffffff;}footer{padding:1rem 1rem;user-select:none;}footer p{text-transform:uppercase;font-size:.85rem;opacity:0.5;font-weight:bold;}footer p a{color:black;transition:all .3s;}footer p a:hover{text-decoration:none;transition:all .3s;}</style>
     <script>
         function toSubmit(e) {
@@ -31,10 +31,28 @@
             window.open(location.href.substr(0, location.href.lastIndexOf('/') + 1) + document.getElementsByName('q')[0].value);
             return false
         }
+
+        function getCurrentDomain() {
+            return window.location.protocol + '//' + window.location.host;
+        }
+
+        function updateDomainLinks() {
+            const domain = getCurrentDomain();
+            const elements = document.querySelectorAll('.dynamic-domain');
+            elements.forEach(el => {
+                el.textContent = domain + '/';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateDomainLinks);
     </script>
 </head>
 <body class="flex">
-<h1 style="margin-bottom: 50px"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 24 24'%3E%3Cpath d='M20.38 8.53c.16-.4.68-1.99-.17-4.14c0 0-1.31-.39-4.3 1.61c-1.25-.33-2.58-.38-3.91-.38c-1.32 0-2.66.05-3.91.38c-2.99-2.03-4.3-1.61-4.3-1.61c-.85 2.15-.33 3.74-.16 4.14C2.61 9.62 2 11 2 12.72c0 6.44 4.16 7.89 10 7.89c5.79 0 10-1.45 10-7.89c0-1.72-.61-3.1-1.62-4.19M12 19.38c-4.12 0-7.47-.19-7.47-4.19c0-.95.47-1.85 1.27-2.58c1.34-1.23 3.63-.58 6.2-.58c2.59 0 4.85-.65 6.2.58c.8.73 1.3 1.62 1.3 2.58c0 3.99-3.37 4.19-7.5 4.19m-3.14-6.26c-.82 0-1.5 1-1.5 2.22c0 1.23.68 2.24 1.5 2.24c.83 0 1.5-1 1.5-2.24c0-1.23-.67-2.22-1.5-2.22m6.28 0c-.83 0-1.5.99-1.5 2.22c0 1.24.67 2.24 1.5 2.24c.82 0 1.5-1 1.5-2.24c0-1.23-.64-2.22-1.5-2.22z' fill='%23000000'/%3E%3C/svg%3E" style="width: 1.5em;margin-right: .2em;vertical-align: bottom;"> GitHub Proxy</h1>
+<nav class="nav">
+    <span class="nav-title">GitHub Proxy</span>
+    <a href="{{.AnalyticsURL}}" target="_blank">数据分析</a>
+</nav>
+<h1 style="margin-bottom: 50px;margin-top: 60px"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 24 24'%3E%3Cpath d='M20.38 8.53c.16-.4.68-1.99-.17-4.14c0 0-1.31-.39-4.3 1.61c-1.25-.33-2.58-.38-3.91-.38c-1.32 0-2.66.05-3.91.38c-2.99-2.03-4.3-1.61-4.3-1.61c-.85 2.15-.33 3.74-.16 4.14C2.61 9.62 2 11 2 12.72c0 6.44 4.16 7.89 10 7.89c5.79 0 10-1.45 10-7.89c0-1.72-.61-3.1-1.62-4.19M12 19.38c-4.12 0-7.47-.19-7.47-4.19c0-.95.47-1.85 1.27-2.58c1.34-1.23 3.63-.58 6.2-.58c2.59 0 4.85-.65 6.2.58c.8.73 1.3 1.62 1.3 2.58c0 3.99-3.37 4.19-7.5 4.19m-3.14-6.26c-.82 0-1.5 1-1.5 2.22c0 1.23.68 2.24 1.5 2.24c.83 0 1.5-1 1.5-2.24c0-1.23-.67-2.22-1.5-2.22m6.28 0c-.83 0-1.5.99-1.5 2.22c0 1.24.67 2.24 1.5 2.24c.82 0 1.5-1 1.5-2.24c0-1.23-.64-2.22-1.5-2.22z' fill='%23000000'/%3E%3C/svg%3E" style="width: 1.5em;margin-right: .2em;vertical-align: bottom;"> GitHub Proxy</h1>
 <form action="./" method="get" style="padding-bottom: 0px" target="_blank" class="flex" onsubmit="toSubmit(event)">
     <label class="block" style="width: fit-content">
         <input class="block url" name="q" type="text" placeholder="键入Github文件链接"
@@ -49,26 +67,26 @@
         <p>GitHub文件链接带不带协议头都可以，支持 releases、archive、gist、raw.githubusercontent.com 文件（除文件夹）</p>
     </div>
     <div class="example">
-        <p>API：<br>https://api.github.com/repos/oopsunix/ghproxy</p>
-        <p>Gist：<br>https://gist.github.com/oopsunix/2dbf20f64984773da6740d1d1cf7c2d4</p>
-        <p>分支源码：<br>https://github.com/oopsunix/ghproxy/archive/refs/heads/main.zip</p>
-        <p>Raw文件：<br>https://raw.githubusercontent.com/oopsunix/ghproxy/main/README.md</p>
-        <p>Release源码：<br>https://github.com/oopsunix/ghproxy/archive/refs/tags/v1.0.0.zip</p>
-        <p>Release文件：<br>https://github.com/oopsunix/ghproxy/releases/latest/download/ghproxy</p>
+        <p>API：<br>https://api.github.com/repos/Geekertao/ghproxy</p>
+        <p>Gist：<br>https://gist.github.com/Geekertao/2dbf20f64984773da6740d1d1cf7c2d4</p>
+        <p>分支源码：<br>https://github.com/Geekertao/ghproxy/archive/refs/heads/main.zip</p>
+        <p>Raw文件：<br>https://raw.githubusercontent.com/Geekertao/ghproxy/main/README.md</p>
+        <p>Release源码：<br>https://github.com/Geekertao/ghproxy/archive/refs/tags/v1.0.0.zip</p>
+        <p>Release文件：<br>https://github.com/Geekertao/ghproxy/releases/latest/download/ghproxy</p>
     </div>
     <div class="command">
-        <p>git clone：<br>git clone <font color="#2378ff">https://{{.Domain}}/</font>https://github.com/oopsunix/ghproxy.git
+        <p>git clone：<br>git clone <font color="#2378ff" class="dynamic-domain"></font>https://github.com/Geekertao/ghproxy.git
         </p>
-        <p>wget：<br>wget <font color="#2378ff">https://{{.Domain}}/</font>https://github.com/oopsunix/ghproxy/archive/refs/tags/v1.0.0.zip
+        <p>wget：<br>wget <font color="#2378ff" class="dynamic-domain"></font>https://github.com/Geekertao/ghproxy/archive/refs/tags/v1.0.0.zip
         </p>
-        <p>curl：<br>curl -O <font color="#2378ff">https://{{.Domain}}/</font>https://github.com/oopsunix/ghproxy/archive/refs/tags/v1.0.0.zip
+        <p>curl：<br>curl -O <font color="#2378ff" class="dynamic-domain"></font>https://github.com/Geekertao/ghproxy/archive/refs/tags/v1.0.0.zip
         </p>
     </div>
 </form>
 <footer>
     <div style="text-align: center;">
         <p>
-            Copyright © <span id="current-year"></span> <a href="https://github.com/oopsunix" target="_blank">oopsunix</a>. Powered by <a href="https://github.com/oopsunix/ghproxy" class="text-decoration-none link-success" target="_blank">ghproxy</a>.
+            Copyright © <span id="current-year"></span> <a href="https://github.com/Geekertao" target="_blank">Geekertao</a>. Powered by <a href="https://github.com/Geekertao/ghproxy" class="text-decoration-none link-success" target="_blank">ghproxy</a>.
         </p>
     </div>
 </footer>

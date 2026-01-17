@@ -38,17 +38,21 @@ var (
 	configLock sync.RWMutex
 	log        = logrus.New()
 
+	tmpl    *template.Template
+	tmpl404 *template.Template
+
 	// 新增：用于记录每个 IP 的请求时间
 	ipRequests = make(map[string][]time.Time)
 	ipLock     sync.Mutex
 )
 
 type Config struct {
-	WhiteList    []string           `json:"whiteList"`
-	BlackList    []string           `json:"blackList"`
-	Domain       string             `json:"domain"`
-	Debug        bool               `json:"debug"`
-	RequestLimit RequestLimitConfig `toml:"requestLimit"`
+	WhiteList       []string           `json:"whiteList"`
+	BlackList       []string           `json:"blackList"`
+	Debug           bool               `json:"debug"`
+	AnalyticsURL    string             `json:"analyticsURL"`
+	SupportImageURL string             `json:"supportImageURL"`
+	RequestLimit    RequestLimitConfig `toml:"requestLimit"`
 }
 
 type RequestLimitConfig struct {
@@ -126,9 +130,16 @@ func main() {
 		},
 	}
 
-	tmpl, err := template.ParseFiles("./public/index.html")
+	var err error
+	tmpl, err = template.ParseFiles("./public/index.html")
 	if err != nil {
 		log.Errorf("load template error: %v\n", err)
+		return
+	}
+
+	tmpl404, err = template.ParseFiles("./public/404.html")
+	if err != nil {
+		log.Errorf("load 404 template error: %v\n", err)
 		return
 	}
 
@@ -137,13 +148,13 @@ func main() {
 
 	router.GET("/", func(c *gin.Context) {
 		configLock.RLock()
-		domain := config.Domain
+		analyticsURL := config.AnalyticsURL
 		configLock.RUnlock()
 
 		data := struct {
-			Domain string
+			AnalyticsURL string
 		}{
-			Domain: domain,
+			AnalyticsURL: analyticsURL,
 		}
 
 		if err := tmpl.Execute(c.Writer, data); err != nil {
@@ -167,22 +178,21 @@ func handler(c *gin.Context) {
 	}
 
 	if !strings.HasPrefix(rawPath, "http") {
-		c.String(http.StatusForbidden, "Invalid input.")
-		return
+		rawPath = "https://" + rawPath
 	}
 
 	matches := checkURL(rawPath)
 	if matches != nil {
 		if len(config.WhiteList) > 0 && !checkList(matches, config.WhiteList) {
-			c.String(http.StatusForbidden, "Forbidden by white list.")
+			render404(c, tmpl404)
 			return
 		}
 		if len(config.BlackList) > 0 && checkList(matches, config.BlackList) {
-			c.String(http.StatusForbidden, "Forbidden by black list.")
+			render404(c, tmpl404)
 			return
 		}
 	} else {
-		c.String(http.StatusForbidden, "Invalid input.")
+		render404(c, tmpl404)
 		return
 	}
 
@@ -360,4 +370,23 @@ func checkList(matches, list []string) bool {
 		}
 	}
 	return false
+}
+
+func render404(c *gin.Context, tmpl *template.Template) {
+	configLock.RLock()
+	analyticsURL := config.AnalyticsURL
+	supportImageURL := config.SupportImageURL
+	configLock.RUnlock()
+
+	data := struct {
+		AnalyticsURL    string
+		SupportImageURL string
+	}{
+		AnalyticsURL:    analyticsURL,
+		SupportImageURL: supportImageURL,
+	}
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusNotFound)
+	tmpl.Execute(c.Writer, data)
 }

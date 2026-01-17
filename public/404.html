@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <title>404 - 链接无效或文件不存在</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" href="https://cdn.akams.cn/github/favicon.png" />
+    <style>html,body{width:100%;margin:0}html{height:100%}body{min-height:100%;padding:20px;box-sizing:border-box}.nav{position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 20px;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:1000;display:flex;justify-content:space-between;align-items:center}.nav a{color:#2378ff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 16px;border-radius:4px;transition:all 0.3s}.nav a:hover{background:#2378ff;color:#fff}.nav-title{font-size:16px;font-weight:bold;color:#333}@media (max-width:500px){.nav{padding:8px 12px}.nav a{padding:6px 10px;font-size:12px}.nav-title{font-size:14px}}.flex{display:flex;flex-direction:column;justify-content:center;align-items:center}.error-code{font-size:6rem;font-weight:800;margin-bottom:20px;background:linear-gradient(45deg,#ff4d4d,#2378ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.message{font-size:1.5rem;margin-bottom:30px;color:#333}.sub-message{font-size:1rem;color:#7b7b7b;margin-bottom:40px}.support-card{background:#f8f9fa;border-radius:12px;padding:30px;margin-top:40px;max-width:500px;width:100%;box-shadow:0 2px 8px rgba(0,0,0,0.1)}.support-text{margin-bottom:20px;font-size:0.95rem;color:#555}.support-image{width:100%;max-width:300px;height:auto;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:transform 0.3s ease;display:block;margin:0 auto}.support-image:hover{transform:scale(1.02)}.back-btn{display:inline-block;margin-top:30px;padding:12px 24px;background:#2378ff;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;transition:opacity 0.2s}.back-btn:hover{opacity:0.9}.footer{margin-top:40px;font-size:0.85rem;color:#7b7b7b}.footer a{color:#2378ff;text-decoration:none}.footer a:hover{text-decoration:underline}@media (max-width:640px){.error-code{font-size:4rem}.message{font-size:1.2rem}.sub-message{font-size:0.9rem}.support-card{padding:20px;margin-top:30px}.support-text{font-size:0.85rem}.support-image{max-width:250px}.back-btn{padding:10px 20px;font-size:0.9rem}}</style>
+</head>
+<body class="flex">
+<nav class="nav">
+    <span class="nav-title">GitHub Proxy</span>
+    <a href="{{.AnalyticsURL}}" target="_blank">数据分析</a>
+</nav>
+
+<div style="margin-top: 80px; text-align: center; width: 100%; max-width: 600px; padding: 0 20px;">
+    <div class="error-code">404</div>
+    <div class="message">文件不存在或链接错误</div>
+    <div class="sub-message">请检查您的原始 GitHub 链接是否正确</div>
+
+    <a href="/" class="back-btn">返回首页</a>
+
+    <div class="support-card">
+        <div class="support-text">
+            <p>💡 <b>您可以帮助我们维持更久的服务</b></p>
+            <p style="margin-top: 10px;">如果觉得本加速工具对您有帮助，欢迎扫描下方二维码支持</p>
+        </div>
+        <img src="{{.SupportImageURL}}" alt="支持我们" class="support-image">
+    </div>
+
+    <div class="footer">
+        <p>Copyright © <span id="current-year"></span> <a href="https://github.com/Geekertao" target="_blank">Geekertao</a>. Powered by <a href="https://github.com/Geekertao/ghproxy" target="_blank">ghproxy</a>.</p>
+    </div>
+</div>
+
+<script>
+    const currentYear = new Date().getFullYear();
+    document.getElementById('current-year').textContent = currentYear;
+</script>
+</body>
+</html>
