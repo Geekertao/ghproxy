@@ -216,8 +216,8 @@ func handler(c *gin.Context) {
 		ipRequests[ip] = recentTimes
 	}
 	log.Debugf("clientIP: %s  Rate: %d\n", clientIP, len(ipRequests[clientIP]))
-	// 检查当前 IP 的请求次数是否超过限制
-	if len(ipRequests[clientIP]) > int(limitRate) {
+	// 检查当前 IP 的请求次数是否超过限制（如果 limitRate <= 0 则不限制）
+	if limitRate > 0 && len(ipRequests[clientIP]) > int(limitRate) {
 		ipLock.Unlock()
 		c.String(http.StatusTooManyRequests, "Too Many Requests.")
 		return
@@ -292,7 +292,8 @@ func proxy(c *gin.Context, u string) {
 		limitSize := config.RequestLimit.LimitSize * 1024 * 1024 // Convert MB to Bytes
 		configLock.RUnlock()
 
-		if size > limitSize {
+		// 如果 limitSize <= 0 则不限制文件大小
+		if limitSize > 0 && size > limitSize {
 			c.String(http.StatusRequestEntityTooLarge, "File too large.")
 			return
 		}
@@ -301,6 +302,12 @@ func proxy(c *gin.Context, u string) {
 	resp.Header.Del("Content-Security-Policy")
 	resp.Header.Del("Referrer-Policy")
 	resp.Header.Del("Strict-Transport-Security")
+
+	// 如果 GitHub 返回 404，显示我们的 404 页面
+	if resp.StatusCode == http.StatusNotFound {
+		render404(c, tmpl404)
+		return
+	}
 
 	for key, values := range resp.Header {
 		for _, value := range values {
