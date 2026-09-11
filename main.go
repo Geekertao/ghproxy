@@ -25,7 +25,8 @@ const (
 )
 
 var (
-	exps = []*regexp.Regexp{
+	// 入口链接：用户可直接粘贴的 GitHub 链接。命中这些的 302 会被重写为代理地址。
+	entryExps = []*regexp.Regexp{
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:releases|archive)/.*$`),
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:blob|raw)/.*$`),
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:info|git-).*$`),
@@ -33,6 +34,20 @@ var (
 		regexp.MustCompile(`^(?:https?://)?gist\.github(?:usercontent|)\.com/([^/]+)/.+?/.+$`),
 		regexp.MustCompile(`^(?:https?://)?api\.github\.com/.+?/([^/]+)(?:/.*)?$`),
 	}
+	// 新增：GitHub 资源 CDN 主机（release 资产签名直链 / 归档分流 / LFS 媒体）。
+	// 这些链接可以直接代理，但**不参与 Location 重写**——保证 github.com 的 302
+	// 仍在服务端内部跟随，客户端拿到的始终是文件内容而不是真实文件地址。
+	assetExps = []*regexp.Regexp{
+		// release-assets：新版 release 资产签名直链（302 目标）
+		// objects / github-releases：旧版资产 CDN 主机（兼容历史链接）
+		regexp.MustCompile(`^(?:https?://)?(?:release-assets|objects|github-releases)\.githubusercontent\.com/([^/]+).*$`),
+		// codeload：源码归档（archive / tar.gz / zip）分流主机
+		regexp.MustCompile(`^(?:https?://)?codeload\.github\.com/([^/]+)/([^/]+)/.*$`),
+		// media：Git LFS 媒体文件
+		regexp.MustCompile(`^(?:https?://)?media\.githubusercontent\.com/(?:media/)?([^/]+)/([^/]+)/.*$`),
+	}
+	// checkURL 使用：入口 + 资源 CDN
+	exps       = append(append([]*regexp.Regexp{}, entryExps...), assetExps...)
 	httpClient *http.Client
 	config     *Config
 	configLock sync.RWMutex
@@ -196,7 +211,7 @@ func handler(c *gin.Context) {
 		return
 	}
 
-	if exps[1].MatchString(rawPath) {
+	if entryExps[1].MatchString(rawPath) {
 		rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
 	}
 
@@ -316,7 +331,9 @@ func proxy(c *gin.Context, u string) {
 	}
 
 	if location := resp.Header.Get("Location"); location != "" {
-		if checkURL(location) != nil {
+		// 仅入口链接重写为代理地址；资源 CDN 等跳转目标在服务端内部跟随，
+		// 直接返回文件内容（客户端看不到真实文件地址）。
+		if isEntryURL(location) {
 			c.Header("Location", "/"+location)
 		} else {
 			proxy(c, location)
@@ -368,6 +385,17 @@ func checkURL(u string) []string {
 		}
 	}
 	return nil
+}
+
+// isEntryURL 判断是否为「入口」链接（github.com / raw / gist / api）。
+// 用于决定 302 是否重写为代理地址；资源 CDN 链接不在其中。
+func isEntryURL(u string) bool {
+	for _, exp := range entryExps {
+		if exp.MatchString(u) {
+			return true
+		}
+	}
+	return false
 }
 
 func checkList(matches, list []string) bool {
