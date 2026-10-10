@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -49,16 +50,16 @@ var (
 	// checkURL 使用：入口 + 资源 CDN
 	exps       = append(append([]*regexp.Regexp{}, entryExps...), assetExps...)
 	httpClient *http.Client
-	config     *Config
-	configLock sync.RWMutex
-	log        = logrus.New()
+	// config 以不可变快照方式发布：loadConfig 构造新对象后原子替换，
+	// 请求路径只做 atomic.Load，避免配置重载与请求处理之间的数据竞争和锁开销。
+	config atomic.Pointer[Config]
+	log    = logrus.New()
 
 	tmpl    *template.Template
 	tmpl404 *template.Template
 
-	// 新增：用于记录每个 IP 的请求时间
-	ipRequests = make(map[string][]time.Time)
-	ipLock     sync.Mutex
+	// 每个 IP 独立的滑动窗口限流器
+	limiter = newRateLimiter()
 )
 
 type Config struct {
@@ -85,6 +86,80 @@ func init() {
 		FullTimestamp:             true,
 	}
 	log.SetFormatter(&formatter)
+	// 保证在任何请求到来前 config 非 nil。
+	config.Store(&Config{})
+}
+
+// rateLimiter 按 IP 记录滑动窗口内的请求时间。
+// 相比原来「每个请求都遍历全部 IP」的实现，这里只处理当前 IP，
+// 并以固定间隔（sweepEvery）回收长期不活跃的 IP，避免数据结构无界增长。
+type rateLimiter struct {
+	mu         sync.Mutex
+	entries    map[string][]time.Time
+	lastSweep  time.Time
+	window     time.Duration
+	sweepEvery time.Duration
+}
+
+func newRateLimiter() *rateLimiter {
+	return &rateLimiter{
+		entries:    make(map[string][]time.Time),
+		lastSweep:  time.Now(),
+		window:     time.Minute,
+		sweepEvery: time.Minute,
+	}
+}
+
+// allow 判断并记录 ip 的这一次请求，返回是否放行。
+// limit <= 0 表示关闭限流：直接放行且不记录、不回收。
+// window 内允许恰好 limit 次请求，第 limit+1 次起返回 false。
+func (l *rateLimiter) allow(ip string, limit int64, now time.Time) bool {
+	if limit <= 0 {
+		return true
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// 低频回收：最多每 sweepEvery 触发一次，避免每请求全表扫描。
+	if now.Sub(l.lastSweep) >= l.sweepEvery {
+		l.sweepLocked(now)
+	}
+
+	cutoff := now.Add(-l.window)
+	times := pruneBefore(l.entries[ip], cutoff)
+	if len(times) >= int(limit) {
+		l.entries[ip] = times
+		return false
+	}
+	l.entries[ip] = append(times, now)
+	return true
+}
+
+// sweepLocked 删除窗口内已无请求的 IP 键，并裁剪仍活跃 IP 的过期记录。
+// 必须在持有 l.mu 时调用。
+func (l *rateLimiter) sweepLocked(now time.Time) {
+	l.lastSweep = now
+	cutoff := now.Add(-l.window)
+	for ip, times := range l.entries {
+		if len(times) == 0 || times[len(times)-1].Before(cutoff) {
+			delete(l.entries, ip)
+			continue
+		}
+		if pruned := pruneBefore(times, cutoff); len(pruned) != len(times) {
+			l.entries[ip] = pruned
+		}
+	}
+}
+
+// pruneBefore 丢弃时间戳早于 cutoff 的前缀记录。记录按时间升序追加，
+// 因此可安全地从头裁剪；保留 t == cutoff 的记录以对齐原有时间窗口语义。
+func pruneBefore(times []time.Time, cutoff time.Time) []time.Time {
+	i := 0
+	for i < len(times) && times[i].Before(cutoff) {
+		i++
+	}
+	return times[i:]
 }
 
 func customLogger() gin.HandlerFunc {
@@ -162,9 +237,7 @@ func main() {
 	log.Info("start HTTP server @ ", httpBase)
 
 	router.GET("/", func(c *gin.Context) {
-		configLock.RLock()
-		analyticsURL := config.AnalyticsURL
-		configLock.RUnlock()
+		analyticsURL := config.Load().AnalyticsURL
 
 		data := struct {
 			AnalyticsURL string
@@ -186,6 +259,9 @@ func main() {
 }
 
 func handler(c *gin.Context) {
+	// 取一次不可变配置快照，保证整个请求内看到一致的配置，且无锁、无数据竞争。
+	cfg := config.Load()
+
 	rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
 
 	for strings.HasPrefix(rawPath, "/") {
@@ -198,11 +274,11 @@ func handler(c *gin.Context) {
 
 	matches := checkURL(rawPath)
 	if matches != nil {
-		if len(config.WhiteList) > 0 && !checkList(matches, config.WhiteList) {
+		if len(cfg.WhiteList) > 0 && !checkList(matches, cfg.WhiteList) {
 			render404(c, tmpl404)
 			return
 		}
-		if len(config.BlackList) > 0 && checkList(matches, config.BlackList) {
+		if len(cfg.BlackList) > 0 && checkList(matches, cfg.BlackList) {
 			render404(c, tmpl404)
 			return
 		}
@@ -215,36 +291,17 @@ func handler(c *gin.Context) {
 		rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
 	}
 
-	// 新增：基于时间的速率限制
+	// 基于时间的速率限制：只处理当前 IP，窗口内允许恰好 limitRate 次。
 	clientIP := c.ClientIP()
-	ipLock.Lock()
-	limitRate := config.RequestLimit.LimitRate
-	now := time.Now()
-	// 移除一分钟前的请求记录
-	for ip, times := range ipRequests {
-		var recentTimes []time.Time
-		for _, t := range times {
-			if now.Sub(t) <= time.Minute {
-				recentTimes = append(recentTimes, t)
-			}
-		}
-		ipRequests[ip] = recentTimes
-	}
-	log.Debugf("clientIP: %s  Rate: %d\n", clientIP, len(ipRequests[clientIP]))
-	// 检查当前 IP 的请求次数是否超过限制（如果 limitRate <= 0 则不限制）
-	if limitRate > 0 && len(ipRequests[clientIP]) > int(limitRate) {
-		ipLock.Unlock()
+	limitRate := cfg.RequestLimit.LimitRate
+	if !limiter.allow(clientIP, limitRate, time.Now()) {
+		log.Debugf("clientIP: %s  rate limited (limit=%d)", clientIP, limitRate)
 		c.String(http.StatusTooManyRequests, "Too Many Requests.")
 		return
 	}
-	// 记录当前请求时间
-	ipRequests[clientIP] = append(ipRequests[clientIP], now)
-	ipLock.Unlock()
 
 	// 限制访问 IP
-	configLock.RLock()
-	limitAddr := config.RequestLimit.LimitAddr
-	configLock.RUnlock()
+	limitAddr := cfg.RequestLimit.LimitAddr
 	if len(limitAddr) > 0 {
 		for _, ip := range limitAddr {
 			if clientIP == ip {
@@ -255,9 +312,7 @@ func handler(c *gin.Context) {
 	}
 
 	// 限制请求参数
-	configLock.RLock()
-	limitParm := config.RequestLimit.LimitParm
-	configLock.RUnlock()
+	limitParm := cfg.RequestLimit.LimitParm
 	if len(limitParm) > 0 {
 		for key, value := range limitParm {
 			if c.Request.Header.Get(key) == value {
@@ -303,9 +358,7 @@ func proxy(c *gin.Context, u string) {
 			return
 		}
 
-		configLock.RLock()
-		limitSize := config.RequestLimit.LimitSize * 1024 * 1024 // Convert MB to Bytes
-		configLock.RUnlock()
+		limitSize := config.Load().RequestLimit.LimitSize * 1024 * 1024 // Convert MB to Bytes
 
 		// 如果 limitSize <= 0 则不限制文件大小
 		if limitSize > 0 && size > limitSize {
@@ -348,11 +401,16 @@ func proxy(c *gin.Context, u string) {
 }
 
 func loadConfig() {
+	_ = loadConfigFrom("config.json")
+}
+
+// loadConfigFrom 从指定路径加载配置并原子发布。返回错误便于测试验证。
+func loadConfigFrom(path string) error {
 	log.Info("loading config...")
-	file, err := os.Open("config.json")
+	file, err := os.Open(path)
 	if err != nil {
 		log.Errorf("load config error: %v\n", err)
-		return
+		return err
 	}
 	defer func(file *os.File) {
 		err := file.Close()
@@ -365,17 +423,17 @@ func loadConfig() {
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&newConfig); err != nil {
 		log.Errorf("decod config error: %v\n", err)
-		return
+		return err
 	}
 
-	configLock.Lock()
-	config = &newConfig
+	// 构造完成后整体原子替换，读方无需加锁，也不会看到半更新的配置。
+	config.Store(&newConfig)
 	if newConfig.Debug {
 		log.SetLevel(logrus.DebugLevel)
 	} else {
 		log.SetLevel(logrus.InfoLevel)
 	}
-	configLock.Unlock()
+	return nil
 }
 
 func checkURL(u string) []string {
@@ -408,10 +466,9 @@ func checkList(matches, list []string) bool {
 }
 
 func render404(c *gin.Context, tmpl *template.Template) {
-	configLock.RLock()
-	analyticsURL := config.AnalyticsURL
-	supportImageURL := config.SupportImageURL
-	configLock.RUnlock()
+	cfg := config.Load()
+	analyticsURL := cfg.AnalyticsURL
+	supportImageURL := cfg.SupportImageURL
 
 	data := struct {
 		AnalyticsURL    string
