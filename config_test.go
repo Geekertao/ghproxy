@@ -11,10 +11,16 @@ import (
 
 // 配置重载与请求读取并发时不应发生数据竞争，且读取方始终看到完整一致的快照。
 func TestConfigReloadConcurrentWithRead(t *testing.T) {
-	// 覆盖日志输出，避免大量重载日志污染测试输出。
+	// 保存并恢复所有被修改的全局状态，避免污染其他测试。
+	origConfig := config.Load()
 	oldOut := log.Out
+	oldLevel := log.GetLevel()
 	log.SetOutput(io.Discard)
-	t.Cleanup(func() { log.SetOutput(oldOut) })
+	t.Cleanup(func() {
+		config.Store(origConfig)
+		log.SetOutput(oldOut)
+		log.SetLevel(oldLevel)
+	})
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

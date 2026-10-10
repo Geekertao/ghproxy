@@ -45,7 +45,7 @@ func benchNew(b *testing.B, ipCount int, limit int64) {
 	// 预填满各 IP 的窗口，使热路径处于「已满」状态。
 	for _, ip := range ips {
 		for j := int64(0); j < limit; j++ {
-			l.allow(ip, limit, now)
+			l.allowAt(ip, limit, now)
 		}
 	}
 
@@ -54,7 +54,24 @@ func benchNew(b *testing.B, ipCount int, limit int64) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			l.allow(ips[i%ipCount], limit, now)
+			l.allowAt(ips[i%ipCount], limit, now)
+			i++
+		}
+	})
+}
+
+// benchNewRealClock 衡量生产入口（锁内采样 time.Now）的单请求成本。
+func benchNewRealClock(b *testing.B, ipCount int, limit int64) {
+	l := newRateLimiter()
+	l.sweepEvery = time.Hour
+	ips := makeIPs(ipCount)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			l.allow(ips[i%ipCount], limit)
 			i++
 		}
 	})
@@ -87,6 +104,9 @@ func BenchmarkLimiterNew_ManyIPs(b *testing.B)  { benchNew(b, 1000, 100) }
 func BenchmarkLimiterOld_SingleIP(b *testing.B) { benchOld(b, 1, 100) }
 func BenchmarkLimiterOld_ManyIPs(b *testing.B)  { benchOld(b, 1000, 100) }
 
+func BenchmarkLimiterNewRealClock_SingleIP(b *testing.B) { benchNewRealClock(b, 1, 100) }
+func BenchmarkLimiterNewRealClock_ManyIPs(b *testing.B)  { benchNewRealClock(b, 1000, 100) }
+
 // BenchmarkLimiterSweep 衡量一次回收（清理大量过期 IP）的开销。
 func BenchmarkLimiterSweep(b *testing.B) {
 	const n = 5000
@@ -98,9 +118,9 @@ func BenchmarkLimiterSweep(b *testing.B) {
 		l := newRateLimiter()
 		l.sweepEvery = time.Hour
 		for _, ip := range ips {
-			l.allow(ip, 10, base)
+			l.allowAt(ip, 10, base)
 		}
 		l.sweepEvery = 0
-		l.allow("192.168.0.1", 10, base.Add(2*time.Minute))
+		l.allowAt("192.168.0.1", 10, base.Add(2*time.Minute))
 	}
 }

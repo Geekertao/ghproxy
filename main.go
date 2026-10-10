@@ -99,6 +99,8 @@ type rateLimiter struct {
 	lastSweep  time.Time
 	window     time.Duration
 	sweepEvery time.Duration
+	// now 可注入，默认 time.Now；测试用 allowAt 注入确定性时间。
+	now func() time.Time
 }
 
 func newRateLimiter() *rateLimiter {
@@ -107,19 +109,33 @@ func newRateLimiter() *rateLimiter {
 		lastSweep:  time.Now(),
 		window:     time.Minute,
 		sweepEvery: time.Minute,
+		now:        time.Now,
 	}
 }
 
-// allow 判断并记录 ip 的这一次请求，返回是否放行。
+// allow 是生产入口：先取得锁、再采样当前时间，保证时间戳的采样顺序与写入顺序
+// 一致，从而维持 entries[ip] 按时间升序的不变量（否则乱序会导致过期记录裁剪
+// 与 sweep 回收判断出错）。
+func (l *rateLimiter) allow(ip string, limit int64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.allowLocked(ip, limit, l.now())
+}
+
+// allowAt 是测试辅助入口，允许注入时间；与 allow 复用同一套加锁及限流逻辑。
+func (l *rateLimiter) allowAt(ip string, limit int64, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.allowLocked(ip, limit, now)
+}
+
+// allowLocked 执行限流判断与记录，必须在持有 l.mu 时调用。
 // limit <= 0 表示关闭限流：直接放行且不记录、不回收。
 // window 内允许恰好 limit 次请求，第 limit+1 次起返回 false。
-func (l *rateLimiter) allow(ip string, limit int64, now time.Time) bool {
+func (l *rateLimiter) allowLocked(ip string, limit int64, now time.Time) bool {
 	if limit <= 0 {
 		return true
 	}
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
 
 	// 低频回收：最多每 sweepEvery 触发一次，避免每请求全表扫描。
 	if now.Sub(l.lastSweep) >= l.sweepEvery {
@@ -275,15 +291,15 @@ func handler(c *gin.Context) {
 	matches := checkURL(rawPath)
 	if matches != nil {
 		if len(cfg.WhiteList) > 0 && !checkList(matches, cfg.WhiteList) {
-			render404(c, tmpl404)
+			render404(c, tmpl404, cfg)
 			return
 		}
 		if len(cfg.BlackList) > 0 && checkList(matches, cfg.BlackList) {
-			render404(c, tmpl404)
+			render404(c, tmpl404, cfg)
 			return
 		}
 	} else {
-		render404(c, tmpl404)
+		render404(c, tmpl404, cfg)
 		return
 	}
 
@@ -292,9 +308,10 @@ func handler(c *gin.Context) {
 	}
 
 	// 基于时间的速率限制：只处理当前 IP，窗口内允许恰好 limitRate 次。
+	// 时间在 limiter.allow 内部持锁后采样，避免并发下时间戳乱序。
 	clientIP := c.ClientIP()
 	limitRate := cfg.RequestLimit.LimitRate
-	if !limiter.allow(clientIP, limitRate, time.Now()) {
+	if !limiter.allow(clientIP, limitRate) {
 		log.Debugf("clientIP: %s  rate limited (limit=%d)", clientIP, limitRate)
 		c.String(http.StatusTooManyRequests, "Too Many Requests.")
 		return
@@ -322,10 +339,10 @@ func handler(c *gin.Context) {
 		}
 	}
 
-	proxy(c, rawPath)
+	proxy(c, rawPath, cfg)
 }
 
-func proxy(c *gin.Context, u string) {
+func proxy(c *gin.Context, u string, cfg *Config) {
 	req, err := http.NewRequest(c.Request.Method, u, c.Request.Body)
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("server error %v", err))
@@ -358,7 +375,7 @@ func proxy(c *gin.Context, u string) {
 			return
 		}
 
-		limitSize := config.Load().RequestLimit.LimitSize * 1024 * 1024 // Convert MB to Bytes
+		limitSize := cfg.RequestLimit.LimitSize * 1024 * 1024 // Convert MB to Bytes
 
 		// 如果 limitSize <= 0 则不限制文件大小
 		if limitSize > 0 && size > limitSize {
@@ -373,7 +390,7 @@ func proxy(c *gin.Context, u string) {
 
 	// 如果 GitHub 返回 404，显示我们的 404 页面
 	if resp.StatusCode == http.StatusNotFound {
-		render404(c, tmpl404)
+		render404(c, tmpl404, cfg)
 		return
 	}
 
@@ -389,7 +406,7 @@ func proxy(c *gin.Context, u string) {
 		if isEntryURL(location) {
 			c.Header("Location", "/"+location)
 		} else {
-			proxy(c, location)
+			proxy(c, location, cfg)
 			return
 		}
 	}
@@ -465,8 +482,7 @@ func checkList(matches, list []string) bool {
 	return false
 }
 
-func render404(c *gin.Context, tmpl *template.Template) {
-	cfg := config.Load()
+func render404(c *gin.Context, tmpl *template.Template, cfg *Config) {
 	analyticsURL := cfg.AnalyticsURL
 	supportImageURL := cfg.SupportImageURL
 

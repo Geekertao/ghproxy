@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +25,14 @@ func (b *trackingBody) Read(p []byte) (int, error) { return b.r.Read(p) }
 func (b *trackingBody) Close() error {
 	b.closed = true
 	return nil
+}
+
+// setTestGinMode 设置测试模式并在测试结束后恢复原模式，避免污染全局状态。
+func setTestGinMode(t *testing.T) {
+	t.Helper()
+	old := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(old) })
 }
 
 func withFakeTransport(t *testing.T, resp *http.Response, body *trackingBody) {
@@ -53,7 +60,7 @@ func newTestContext(method, target string) (*gin.Context, *httptest.ResponseReco
 
 // 9. 代理应正确转发响应内容，并关闭上游响应体。
 func TestProxyForwardsAndClosesBody(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	setTestGinMode(t)
 	const payload = "hello ghproxy streaming body"
 	body := &trackingBody{r: strings.NewReader(payload)}
 	resp := &http.Response{
@@ -64,7 +71,7 @@ func TestProxyForwardsAndClosesBody(t *testing.T) {
 	withFakeTransport(t, resp, body)
 
 	c, w := newTestContext(http.MethodGet, "/https://raw.githubusercontent.com/a/b/main/x.txt")
-	proxy(c, "https://raw.githubusercontent.com/a/b/main/x.txt")
+	proxy(c, "https://raw.githubusercontent.com/a/b/main/x.txt", config.Load())
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("状态码应为 200，实际 %d", w.Code)
@@ -79,10 +86,11 @@ func TestProxyForwardsAndClosesBody(t *testing.T) {
 
 // 超过文件大小限制时应返回 413 并关闭响应体（不读取整个文件）。
 func TestProxyRejectsOversize(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	setTestGinMode(t)
 	oldCfg := config.Load()
 	t.Cleanup(func() { config.Store(oldCfg) })
-	config.Store(&Config{RequestLimit: RequestLimitConfig{LimitSize: 1}}) // 1 MB
+	cfg := &Config{RequestLimit: RequestLimitConfig{LimitSize: 1}} // 1 MB
+	config.Store(cfg)
 
 	body := &trackingBody{r: strings.NewReader("tiny")}
 	resp := &http.Response{
@@ -93,7 +101,7 @@ func TestProxyRejectsOversize(t *testing.T) {
 	withFakeTransport(t, resp, body)
 
 	c, w := newTestContext(http.MethodGet, "/https://raw.githubusercontent.com/a/b/main/big.bin")
-	proxy(c, "https://raw.githubusercontent.com/a/b/main/big.bin")
+	proxy(c, "https://raw.githubusercontent.com/a/b/main/big.bin", cfg)
 
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("状态码应为 413，实际 %d", w.Code)
@@ -105,7 +113,7 @@ func TestProxyRejectsOversize(t *testing.T) {
 
 // 入口链接的 302 应重写为代理地址，而不是内部跟随。
 func TestProxyRewritesEntryLocation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	setTestGinMode(t)
 	body := &trackingBody{r: strings.NewReader("")}
 	resp := &http.Response{
 		StatusCode: http.StatusFound,
@@ -115,7 +123,7 @@ func TestProxyRewritesEntryLocation(t *testing.T) {
 	withFakeTransport(t, resp, body)
 
 	c, w := newTestContext(http.MethodGet, "/https://github.com/a/b/releases/download/v1/x.zip")
-	proxy(c, "https://github.com/a/b/releases/download/v1/x.zip")
+	proxy(c, "https://github.com/a/b/releases/download/v1/x.zip", config.Load())
 
 	loc := w.Header().Get("Location")
 	if loc != "/https://github.com/a/b/releases/download/v1/x.zip" {
@@ -125,7 +133,7 @@ func TestProxyRewritesEntryLocation(t *testing.T) {
 
 // 达到限流上限后，handler 直接返回 429，不进入代理流程。
 func TestHandlerReturns429WhenLimited(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	setTestGinMode(t)
 	oldLimiter := limiter
 	oldCfg := config.Load()
 	t.Cleanup(func() {
@@ -136,8 +144,8 @@ func TestHandlerReturns429WhenLimited(t *testing.T) {
 	limiter = newRateLimiter()
 	config.Store(&Config{RequestLimit: RequestLimitConfig{LimitRate: 1}})
 
-	// 预先占满该 IP 的唯一额度。
-	if !limiter.allow("1.2.3.4", 1, time.Now()) {
+	// 通过生产入口预先占满该 IP 的唯一额度。
+	if !limiter.allow("1.2.3.4", 1) {
 		t.Fatal("预填充失败")
 	}
 
